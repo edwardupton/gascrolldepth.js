@@ -9,19 +9,6 @@
   "use strict";
 
   /*
-   * Extend a series of objects with the properties of each.
-   * Ref: http://stackoverflow.com/a/11197343/159762
-   */
-
-  function extend(){
-    for ( var i=1; i<arguments.length; i++ )
-      for ( var key in arguments[i] )
-        if ( arguments[i].hasOwnProperty(key) )
-          arguments[0][key] = arguments[i][key];
-    return arguments[0];
-  }
-
-  /*
    * Returns true if the element is in the array. Exact comparison is used.
    */
 
@@ -128,19 +115,18 @@
   /*
    * Module variables.
    */
-  var defaults = {
+  var options = {
     minHeight: 0,
     elements: [],
     percentage: true,
-    userTiming: true,
-    pixelDepth: true,
+    userTiming: false,
+    pixelDepth: false,
     nonInteraction: true,
     gaGlobal: false,
-    gtmOverride: false
+    gtmOverride: true
   };
 
-  var options = extend({}, defaults),
-    cache = [],
+  var cache = [],
     scrollEventBound = false,
     lastPixelDepth = 0,
     universalGA,
@@ -172,40 +158,9 @@
 
     var startTime = +new Date;
 
-    options = extend({}, defaults, initOptions);
-
     // Return early if document height is too small
     if ( getDocumentHeight() < options.minHeight ) {
       return;
-    }
-
-    /*
-     * Determine which version of GA is being used
-     * "ga", "__gaTracker", _gaq", and "dataLayer" are the possible globals
-     */
-
-    if (options.gaGlobal) {
-      universalGA = true;
-      gaGlobal = options.gaGlobal;
-    } else if (typeof ga === "function") {
-      universalGA = true;
-      gaGlobal = 'ga';
-    } else if (typeof __gaTracker === "function") {
-      universalGA = true;
-      gaGlobal = '__gaTracker';
-    }
-
-    if (typeof _gaq !== "undefined" && typeof _gaq.push === "function") {
-      classicGA = true;
-    }
-
-    if (typeof options.eventHandler === "function") {
-      standardEventHandler = options.eventHandler;
-    } else if (typeof dataLayer !== "undefined" && typeof dataLayer.push === "function" && !options.gtmOverride) {
-
-      standardEventHandler = function(data) {
-        dataLayer.push(data);
-      };
     }
 
     /*
@@ -213,54 +168,16 @@
      */
 
     function sendEvent(action, label, scrollDistance, timing) {
-
-      if (standardEventHandler) {
-
-        standardEventHandler({'event': 'ScrollDistance', 'eventCategory': 'Scroll Depth', 'eventAction': action, 'eventLabel': label, 'eventValue': 1, 'eventNonInteraction': options.nonInteraction});
+        dataLayer.push({'event': 'ScrollDistance', 'eventCategory': 'Scroll Depth', 'eventAction': action, 'eventLabel': label, 'eventValue': 1, 'eventNonInteraction': options.nonInteraction});
 
         if (options.pixelDepth && arguments.length > 2 && scrollDistance > lastPixelDepth) {
           lastPixelDepth = scrollDistance;
-          standardEventHandler({'event': 'ScrollDistance', 'eventCategory': 'Scroll Depth', 'eventAction': 'Pixel Depth', 'eventLabel': rounded(scrollDistance), 'eventValue': 1, 'eventNonInteraction': options.nonInteraction});
+          dataLayer.push({'event': 'ScrollDistance', 'eventCategory': 'Scroll Depth', 'eventAction': 'Pixel Depth', 'eventLabel': rounded(scrollDistance), 'eventValue': 1, 'eventNonInteraction': options.nonInteraction});
         }
 
         if (options.userTiming && arguments.length > 3) {
-          standardEventHandler({'event': 'ScrollTiming', 'eventCategory': 'Scroll Depth', 'eventAction': action, 'eventLabel': label, 'eventTiming': timing});
+          dataLayer.push({'event': 'ScrollTiming', 'eventCategory': 'Scroll Depth', 'eventAction': action, 'eventLabel': label, 'eventTiming': timing});
         }
-
-      } else {
-
-        if (universalGA) {
-
-          window[gaGlobal]('send', 'event', 'Scroll Depth', action, label, 1, {'nonInteraction': options.nonInteraction});
-
-          if (options.pixelDepth && arguments.length > 2 && scrollDistance > lastPixelDepth) {
-            lastPixelDepth = scrollDistance;
-            window[gaGlobal]('send', 'event', 'Scroll Depth', 'Pixel Depth', rounded(scrollDistance), 1, {'nonInteraction': options.nonInteraction});
-          }
-
-          if (options.userTiming && arguments.length > 3) {
-            window[gaGlobal]('send', 'timing', 'Scroll Depth', action, timing, label);
-          }
-
-        }
-
-        if (classicGA) {
-
-          _gaq.push(['_trackEvent', 'Scroll Depth', action, label, 1, options.nonInteraction]);
-
-          if (options.pixelDepth && arguments.length > 2 && scrollDistance > lastPixelDepth) {
-            lastPixelDepth = scrollDistance;
-            _gaq.push(['_trackEvent', 'Scroll Depth', 'Pixel Depth', rounded(scrollDistance), 1, options.nonInteraction]);
-          }
-
-          if (options.userTiming && arguments.length > 3) {
-            _gaq.push(['_trackTiming', 'Scroll Depth', action, timing, label, 100]);
-          }
-
-        }
-
-      }
-
     }
 
     function calculateMarks(docHeight) {
@@ -395,55 +312,13 @@
     bindScrollDepth(scrollEventHandler);
   };
 
-  // Add DOM elements to be tracked
-  var addElements = function(elems) {
-    if (typeof elems == "undefined" || !isArray(elems)) {
-      return;
-    }
-
-    for (var i=0; i<elems.length; i++) {
-      var elem = elems[i];
-      var elemIndex = options.elements.indexOf(elem);
-      if (elemIndex == -1) {
-        options.elements.push(elem);
-      }
-    }
-
-    if (!scrollEventBound) {
-      bindScrollDepth();
-    }
-  };
-
-  // Remove DOM elements currently tracked
-  var removeElements = function(elems) {
-    if (typeof elems == "undefined" || !isArray(elems)) {
-      return;
-    }
-
-    for (var i=0; i<elems.length; i++) {
-      var elem = elems[i];
-
-      var elementsIndex = options.elements.indexOf(elem);
-      if (elementsIndex > -1) {
-        options.elements.splice(elementsIndex, 1);
-      }
-
-      var cacheIndex = cache.indexOf(elem);
-      if (cacheIndex > -1) {
-        cache.splice(cacheIndex, 1);
-      }
-    }
-  };
-
   /*
    * Globals
    */
 
   window.gascrolldepth = {
     init: init,
-    reset: reset,
-    addElements: addElements,
-    removeElements: removeElements
+    reset: reset
   };
 
   /*
@@ -455,3 +330,5 @@
   }
 
 })( window, document );
+
+gascrolldepth.init()
